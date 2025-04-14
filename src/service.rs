@@ -57,13 +57,13 @@ impl Service {
     async fn transcode(
         &self,
         input: &str,
-        metadata: &Vec<String>,
+        metadata: &[String],
         output: &str,
     ) -> anyhow::Result<()> {
         tracing::debug!("call ffmpeg");
 
         let input = input.to_string();
-        let metadata = metadata.clone();
+        let metadata = metadata.to_owned();
         let output = output.to_string();
         let transcoder = self.transcoder.clone();
 

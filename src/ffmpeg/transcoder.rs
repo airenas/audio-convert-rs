@@ -223,12 +223,12 @@ impl Transcoder {
     }
 }
 
-#[tracing::instrument]
-pub fn transcode(input: &str, metadata: &Vec<String>, output: &str) -> anyhow::Result<()> {
+#[tracing::instrument(skip(metadata))]
+pub fn transcode(input: &str, metadata: &[String], output: &str) -> anyhow::Result<()> {
     let filter = env::args().nth(3).unwrap_or_else(|| "anull".to_owned());
     let mut ictx = ffmpeg::format::input(input)?;
-    let mut octx = ffmpeg::format::output(&output)?;
-    let mut transcoder = transcoder(&mut ictx, &mut octx, &output, &filter)?;
+    let mut octx = ffmpeg::format::output(output)?;
+    let mut transcoder = transcoder(&mut ictx, &mut octx, output, &filter)?;
 
     let combined_metadata = prepare_metadata(ictx.metadata().to_owned(), metadata)?;
     octx.set_metadata(combined_metadata);
@@ -258,7 +258,7 @@ pub fn transcode(input: &str, metadata: &Vec<String>, output: &str) -> anyhow::R
 
 fn prepare_metadata<'a>(
     metadata: Dictionary<'a>,
-    metadata_add: &Vec<String>,
+    metadata_add: &[String],
 ) -> anyhow::Result<Dictionary<'a>> {
     let mut combined_metadata = metadata;
 
@@ -267,7 +267,7 @@ fn prepare_metadata<'a>(
         let mut parts = s.splitn(2, '=');
         let key = parts.next().unwrap_or("");
         let value = parts.next().unwrap_or("");
-        if key == "" {
+        if key.is_empty() {
             return Err(anyhow::anyhow!("Invalid metadata key-value pair"));
         }
         combined_metadata.set(key, value);

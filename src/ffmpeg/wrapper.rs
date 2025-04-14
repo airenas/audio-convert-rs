@@ -15,7 +15,7 @@ impl FFMpegWrapper {
     pub fn transcode(
         &self,
         input: &str,
-        metadata: &Vec<String>,
+        metadata: &[String],
         output: &str,
     ) -> anyhow::Result<()> {
         transcode(input, metadata, output)
