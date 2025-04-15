@@ -21,4 +21,5 @@ message ConvertReply {
 
 service AudioConverter {
   rpc Convert (ConvertInput) returns (ConvertReply);
+  rpc ConvertDryRun (ConvertInput) returns (ConvertReply);
 }

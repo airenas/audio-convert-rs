@@ -194,6 +194,8 @@ impl Transcoder {
         {
             self.send_frame_to_encoder(&filtered)?;
             self.receive_and_process_encoded_packets(octx)?;
+            drop(filtered); 
+            filtered = frame::Audio::empty();
         }
         Ok(())
     }
@@ -252,6 +254,12 @@ pub fn transcode(input: &str, metadata: &[String], output: &str) -> anyhow::Resu
     transcoder.receive_and_process_encoded_packets(&mut octx)?;
 
     octx.write_trailer()?;
+
+    tracing::trace!("Transcoding completed successfully");
+    tracing::trace!("Cleaning up resources");
+    drop(transcoder);
+    drop(octx);
+    drop(ictx);
 
     Ok(())
 }

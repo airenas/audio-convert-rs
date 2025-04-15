@@ -2,17 +2,17 @@ use std::time::Duration;
 
 use anyhow::{Context, Ok};
 use audio_convert_rs::{
+    proto_audio_convert::{self, audio_converter_client, AudioFormat},
     SERVICE_NAME,
-    proto_audio_convert::{self, AudioFormat, audio_converter_client},
 };
 use clap::Parser;
 use tokio::io::AsyncWriteExt;
 use tokio_retry::{
+    strategy::{jitter, ExponentialBackoff},
     RetryIf,
-    strategy::{ExponentialBackoff, jitter},
 };
-use tonic::{Code, transport::Channel};
-use tonic_health::pb::{HealthCheckRequest, health_check_response, health_client::HealthClient};
+use tonic::{transport::Channel, Code};
+use tonic_health::pb::{health_check_response, health_client::HealthClient, HealthCheckRequest};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
@@ -28,6 +28,9 @@ struct Args {
     /// Audio output format
     #[arg(short, long, env, default_value = "MP3")]
     format: String,
+    /// Dry run
+    #[arg(short, long, env, default_value = "false")]
+    dry_run: bool,
 }
 
 #[tokio::main]
@@ -81,8 +84,17 @@ async fn main_int(args: Args) -> anyhow::Result<()> {
                 tracing::info!(message = "Sending request", retry = retry);
                 request.metadata_mut().insert(
                     "traceparent",
-                    tonic::metadata::MetadataValue::try_from("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01").unwrap());
-                let result = client.convert(request).await;
+                    tonic::metadata::MetadataValue::try_from(
+                        "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+                    )
+                    .unwrap(),
+                );
+                let result = if args.dry_run {
+                    tracing::info!(message = "dry run");
+                    client.convert_dry_run(request).await
+                } else {
+                    client.convert(request).await
+                };
 
                 match &result {
                     Err(status) if status.code() == Code::InvalidArgument => {

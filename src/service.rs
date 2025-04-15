@@ -1,7 +1,9 @@
 use std::path::Path;
 
 use crate::{
-    ffmpeg::wrapper::FFMpegWrapper, otel::make_span, proto_audio_convert::{self, AudioFormat, ConvertInput, ConvertReply}
+    ffmpeg::wrapper::FFMpegWrapper,
+    otel::make_span,
+    proto_audio_convert::{self, AudioFormat, ConvertInput, ConvertReply},
 };
 use anyhow::Context;
 use async_tempfile::TempDir;
@@ -53,6 +55,34 @@ impl Service {
         Ok(res)
     }
 
+    #[instrument(skip(request))]
+    async fn convert_dry_run(&self, request: &ConvertInput) -> Result<ConvertReply, SrvError> {
+        tracing::info!(len = request.data.len(), "got a request");
+
+        let audio_format = AudioFormat::try_from(request.format).map_err(|_| {
+            SrvError::InvalidArgument(format!("invalid audio format: {}", request.format))
+        })?;
+        validate_format(audio_format)?;
+
+        let dir = TempDir::new().await.with_context(|| "tmp dir create")?;
+        let dir_str = dir.to_str().context("no tmp dir path")?;
+
+        let input_path = Path::new(dir_str).join("input.wav");
+        let input_file = input_path.to_str().unwrap();
+        save_audio(input_file, &request.data).await?;
+
+        let output_path = Path::new(dir_str).join(prepare_output_file(audio_format)?);
+        let output_file = output_path.to_str().unwrap();
+
+        // self.transcode(input_file, &request.metadata, output_file)
+        //     .await?;
+
+        let res = load_file(input_file).await?;
+
+        let res = ConvertReply { data: res };
+        Ok(res)
+    }
+
     #[instrument(skip(metadata))]
     async fn transcode(
         &self,
@@ -68,8 +98,11 @@ impl Service {
         let transcoder = self.transcoder.clone();
 
         tokio::task::spawn_blocking(move || {
-            transcoder.transcode(&input, &metadata, &output).context("transcode")
-        }).await??;
+            transcoder
+                .transcode(&input, &metadata, &output)
+                .context("transcode")
+        })
+        .await??;
 
         tracing::debug!("ffmpeg done");
         Ok(())
@@ -104,6 +137,32 @@ impl AudioConverter for Service {
             "input"
         );
         let res = self.convert(request.get_ref()).await;
+        match res {
+            Ok(r) => Ok(Response::new(r)),
+            Err(e) => {
+                tracing::error!(error = ?e, "convert error");
+                Err(e.into())
+            }
+        }
+    }
+
+    async fn convert_dry_run(
+        &self,
+        request: Request<ConvertInput>, // Stream of ConvertRequest from client
+    ) -> Result<Response<ConvertReply>, Status> {
+        tracing::trace!(metadata= ?request.metadata(), "Received requests");
+
+        let span = make_span(request.metadata().as_ref());
+        let _enter = span.enter();
+
+        let req = request.get_ref();
+        tracing::info!(
+            metadata = req.metadata.len(),
+            len = req.data.len(),
+            format = req.format,
+            "input"
+        );
+        let res = self.convert_dry_run(request.get_ref()).await;
         match res {
             Ok(r) => Ok(Response::new(r)),
             Err(e) => {
@@ -157,4 +216,3 @@ impl From<SrvError> for Status {
         }
     }
 }
-
