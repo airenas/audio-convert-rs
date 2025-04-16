@@ -1,21 +1,19 @@
-use std::time::Duration;
-
 use anyhow::{Context, Ok};
 use audio_convert_rs::{
-    proto_audio_convert::{self, audio_converter_client, AudioFormat},
+    proto_audio_convert::{
+        self, audio_converter_client, stream_convert_input::Payload, AudioFormat, InitialMetadata,
+        StreamConvertInput,
+    },
     SERVICE_NAME,
 };
 use clap::Parser;
 use tokio::io::AsyncWriteExt;
-use tokio_retry::{
-    strategy::{jitter, ExponentialBackoff},
-    RetryIf,
-};
-use tonic::{transport::Channel, Code};
+use tokio_stream::StreamExt;
+use tonic::transport::Channel;
 use tonic_health::pb::{health_check_response, health_client::HealthClient, HealthCheckRequest};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(version = env!("CARGO_APP_VERSION"), name = SERVICE_NAME, about="Client for audio-convert-rs", 
     long_about = None, author="Airenas V.<airenass@gmail.com>")]
 struct Args {
@@ -28,9 +26,12 @@ struct Args {
     /// Audio output format
     #[arg(short, long, env, default_value = "MP3")]
     format: String,
-    /// Dry run
+    /// Stream file
     #[arg(short, long, env, default_value = "false")]
-    dry_run: bool,
+    stream: bool,
+    /// Send n times
+    #[arg(short, long, env, default_value = "1")]
+    times: u32,
 }
 
 #[tokio::main]
@@ -61,69 +62,119 @@ async fn main_int(args: Args) -> anyhow::Result<()> {
             .await?;
     let audio = std::fs::read(&args.file).with_context(|| format!("read file: {}", args.file))?;
 
-    tracing::info!(len = audio.len(), message = "Sending request",);
+    for _i in 0..args.times {
+        transcode(args.clone(), client.clone(), audio.clone()).await?;
+    }
+    Ok(())
+}
 
-    let retry_strategy = ExponentialBackoff::from_millis(100)
-        .max_delay(Duration::from_secs(20))
-        .factor(2)
-        .take(3)
-        .map(jitter);
-
-    let mut retry = 0;
-    let response = RetryIf::spawn(
-        retry_strategy,
-        || {
-            retry += 1;
-            let mut client = client.clone();
-            let mut request = tonic::Request::new(proto_audio_convert::ConvertInput {
-                format: AudioFormat::from_str_name(&args.format).unwrap_or_default() as i32,
-                metadata: vec!["test=olia".to_string(), "copyright=smth...".to_string()],
-                data: audio.clone(),
-            });
-            async move {
-                tracing::info!(message = "Sending request", retry = retry);
-                request.metadata_mut().insert(
-                    "traceparent",
-                    tonic::metadata::MetadataValue::try_from(
-                        "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
-                    )
-                    .unwrap(),
-                );
-                let result = if args.dry_run {
-                    tracing::info!(message = "dry run");
-                    client.convert_dry_run(request).await
-                } else {
-                    client.convert(request).await
-                };
-
-                match &result {
-                    Err(status) if status.code() == Code::InvalidArgument => {
-                        tracing::error!("Invalid file type: {}", status.message());
-                        return result;
-                    }
-                    _ => {}
-                }
-                result
-            }
-        },
-        |err: &tonic::Status| err.code() != Code::InvalidArgument,
-    )
-    .await
-    .with_context(|| "failed to transcribe audio after multiple retries")?;
-
-    let resp = response.get_ref();
-    tracing::info!(message = "got a response.", len = resp.data.len());
+async fn transcode(
+    args: Args,
+    client: audio_converter_client::AudioConverterClient<Channel>,
+    audio: Vec<u8>,
+) -> anyhow::Result<()> {
+    let data = if args.stream {
+        tracing::info!("streaming");
+        stream_file(client, audio, &args.format)
+            .await
+            .with_context(|| format!("stream file: {}", args.file))?
+    } else {
+        tracing::info!("simple sync call");
+        simple_call(client, audio, &args.format)
+            .await
+            .with_context(|| format!("simple call file: {}", args.file))?
+    };
 
     let output_file = format!("{}.{}", args.file, args.format.to_ascii_lowercase());
     tracing::info!(output_file, "saving...");
     let mut file = tokio::fs::File::create(output_file)
         .await
         .with_context(|| "failed to create file")?;
-    file.write_all(&resp.data)
+    file.write_all(&data)
         .await
         .with_context(|| format!("failed to write file: {:?}", "output.mp3"))?;
 
     Ok(())
+}
+
+async fn stream_file(
+    mut client: audio_converter_client::AudioConverterClient<Channel>,
+    audio: Vec<u8>,
+    format: &str,
+) -> anyhow::Result<Vec<u8>> {
+    let (tx, rx) = tokio::sync::mpsc::channel(10);
+    let input_stream = tokio_stream::wrappers::ReceiverStream::new(rx);
+
+    let format_cp = format.to_owned();
+    tokio::spawn(async move {
+        let metadata = StreamConvertInput {
+            payload: Some(Payload::Metadata(InitialMetadata {
+                format: AudioFormat::from_str_name(&format_cp).unwrap_or_default() as i32,
+                metadata: vec!["test=olia".to_string(), "copyright=smth...".to_string()],
+            })),
+        };
+        if tx.send(metadata).await.is_err() {
+            tracing::error!("Failed to send metadata");
+            return;
+        }
+
+        // Send the audio file in chunks
+        let mut offset = 0;
+        let chunk_size = 64 * 1024; // 64 KB
+        while offset < audio.len() {
+            let end = (offset + chunk_size).min(audio.len());
+            let chunk = StreamConvertInput {
+                payload: Some(Payload::Chunk(audio[offset..end].to_vec())),
+            };
+            if tx.send(chunk).await.is_err() {
+                tracing::error!("Failed to send audio chunk");
+                return;
+            }
+            offset = end;
+        }
+    });
+
+    let mut request = tonic::Request::new(input_stream);
+    request.metadata_mut().insert(
+        "traceparent",
+        tonic::metadata::MetadataValue::try_from(
+            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+        )
+        .unwrap(),
+    );
+    let mut response_stream = client.convert_stream(request).await?.into_inner();
+
+    let mut converted_audio = Vec::new();
+    while let Some(response) = response_stream.next().await {
+        let response = response?;
+        converted_audio.extend(response.chunk);
+    }
+
+    Ok(converted_audio)
+}
+
+async fn simple_call(
+    mut client: audio_converter_client::AudioConverterClient<Channel>,
+    audio: Vec<u8>,
+    format: &str,
+) -> anyhow::Result<Vec<u8>> {
+    let mut request = tonic::Request::new(proto_audio_convert::ConvertInput {
+        format: AudioFormat::from_str_name(format).unwrap_or_default() as i32,
+        metadata: vec!["test=olia".to_string(), "copyright=smth...".to_string()],
+        data: audio,
+    });
+    tracing::info!(message = "Sending request");
+    request.metadata_mut().insert(
+        "traceparent",
+        tonic::metadata::MetadataValue::try_from(
+            "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+        )
+        .unwrap(),
+    );
+    let result = client.convert(request).await?;
+
+    let data = result.get_ref().clone();
+    Ok(data.data)
 }
 
 async fn check_health(port: u16) -> anyhow::Result<()> {
