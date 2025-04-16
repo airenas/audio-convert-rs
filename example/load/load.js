@@ -15,7 +15,6 @@ export let options = {
 };
 
 const binaryData = open('./1.wav', 'b');
-console.log('🧪 Len:', byteArray.length);
 const base64Data = encoding.b64encode(binaryData);
 console.log('🧪 Data length (base64):', base64Data.length);
 
@@ -30,7 +29,7 @@ export default () => {
         plaintext: true
     });
 
-    const data = { format: 1, 
+    const data = { format: 2, 
         metadata: ['olia=aaa'],
         data: base64Data, 
     };
@@ -39,6 +38,10 @@ export default () => {
     check(response, {
         'status is OK': (r) => r && r.status === grpc.StatusOK,
     });
+
+    if (response && response.status !== grpc.StatusOK) {
+        console.log('Response:', response.message);
+    }
 
     client.close();
     sleep(0.1);
