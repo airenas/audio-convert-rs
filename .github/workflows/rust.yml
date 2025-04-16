@@ -1,0 +1,50 @@
+name: Rust
+
+on:
+  push:
+    branches: [ main]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Run tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: stable
+            override: true
+            components: clippy
+            
+      - name: Install protobuf
+        run: sudo apt update && sudo apt install -y protobuf-compiler
+
+      - name: Install ffmpeg stuff
+        run: |
+          sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg7 \
+          && sudo apt-get update \
+          && sudo apt-get install -y \
+          ffmpeg \
+          clang \
+          libavcodec-dev \
+          libavformat-dev \
+          libavutil-dev \
+          libavdevice-dev \
+          libprotobuf-dev \
+          libswresample-dev \
+          libswscale-dev
+          
+      - name: Build 
+        run: make build/local     
+
+      - name: Test 
+        run: make test/unit     
+
+      - name: Lint 
+        run: make test/lint     
