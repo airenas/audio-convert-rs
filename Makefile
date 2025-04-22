@@ -1,4 +1,5 @@
 -include Makefile.options
+stream?=
 #####################################################################################
 ## print usage information
 help:
@@ -14,7 +15,7 @@ run:
 ###############################################################################
 file?=1.wav
 run/client:
-	RUST_LOG=TRACE,h2=INFO,tonic=INFO cargo run --bin audio-convert-rs-cl -- -i $(file)
+	RUST_LOG=TRACE,h2=INFO,tonic=INFO cargo run --bin audio-convert-rs-cl -- -i $(file) ${stream}
 .PHONY: run/client
 ###############################################################################
 run/build: build/local
