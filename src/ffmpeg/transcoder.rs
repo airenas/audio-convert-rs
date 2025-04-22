@@ -118,9 +118,10 @@ fn transcoder<P: AsRef<Path> + ?Sized>(
     // tracing::info!(rate = decoder.bit_rate(), "Configured bit rate");
     encoder.set_max_bit_rate(decoder.max_bit_rate());
     if codec.description().contains("mp3") {
-        tracing::info!(bit_rate = 50_000, "Configured bit rate for mp3");
+        let bit_rate = 64_000;
+        tracing::info!(bit_rate, "Configured bit rate for mp3");
         encoder.set_quality(4);
-        encoder.set_bit_rate(50_000);
+        encoder.set_bit_rate(bit_rate);
     }
     // tracing::info!(max_bit_rate = decoder.max_bit_rate(), "Configured max bit rate");
 
