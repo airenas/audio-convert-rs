@@ -82,23 +82,25 @@ impl AudioConverter for Service {
         tracing::trace!(metadata= ?request.metadata(), "Received requests");
 
         let span = make_span(request.metadata().as_ref());
-        let _enter = span.enter();
 
         let req = request.get_ref();
-        tracing::info!(
-            metadata = req.metadata.len(),
-            len = req.data.len(),
-            format = req.format,
-            "input"
-        );
-        let res = self.convert(request.get_ref()).await;
-        match res {
-            Ok(r) => Ok(Response::new(r)),
-            Err(e) => {
-                tracing::error!(error = ?e, "convert error");
-                Err(e.into())
+        let fut = async {
+            tracing::info!(
+                metadata = req.metadata.len(),
+                len = req.data.len(),
+                format = req.format,
+                "input"
+            );
+            let res = self.convert(request.get_ref()).await;
+            match res {
+                Ok(r) => Ok(Response::new(r)),
+                Err(e) => {
+                    tracing::error!(error = ?e, "convert error");
+                    Err(e.into())
+                }
             }
-        }
+        };
+        fut.instrument(span).await
     }
 
     type ConvertStreamStream = ReceiverStream<Result<StreamFileReply, Status>>;
