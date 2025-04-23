@@ -129,9 +129,8 @@ impl AudioConverter for Service {
 
                         let mut output_file_name: Option<String> = None;
 
-                        {
-                            let save_span = tracing::info_span!("saving file");
-                            let _enter = save_span.enter(); // Enter the span
+                        let save_span = tracing::info_span!("saving file");
+                        async {
                             let mut input_file =
                                 File::create(input_file_name).await.context("file create")?;
                             while let Some(Ok(input)) = input_stream.next().await {
@@ -171,15 +170,18 @@ impl AudioConverter for Service {
                             }
                         }
                             }
+                            Ok::<(), SrvError>(())
                         }
+                        .instrument(save_span)
+                        .await?;
+
                         tracing::debug!("Saved file");
                         match output_file_name {
                             Some(name) => {
                                 transcode(transcoder, input_file_name, &metadata, &name).await?;
-                                {
-                                    let write_span = tracing::info_span!("sending result");
-                                    let _enter = write_span.enter();
 
+                                let write_span = tracing::info_span!("sending result");
+                                async {
                                     tracing::debug!("Sending result");
                                     let mut output_reader = tokio::fs::File::open(&name)
                                         .await
@@ -208,7 +210,10 @@ impl AudioConverter for Service {
                                             }
                                         }
                                     }
+                                    Ok::<(), anyhow::Error>(())
                                 }
+                                .instrument(write_span)
+                                .await?;
                             }
                             None => {
                                 return Err(SrvError::InvalidArgument(
@@ -227,7 +232,7 @@ impl AudioConverter for Service {
                         .await;
                 }
             }
-            .instrument(span.clone()),
+            .instrument(span),
         );
 
         Ok(tonic::Response::new(ReceiverStream::new(rx)))
