@@ -1,13 +1,11 @@
 use ffmpeg_the_third::{self as ffmpeg, Dictionary};
 
-use std::env;
 use std::path::Path;
 
 use ffmpeg::codec::Parameters;
 use ffmpeg::{codec, filter, frame, media};
 
 fn filter(
-    spec: &str,
     decoder: &codec::decoder::Audio,
     encoder: &codec::encoder::Audio,
 ) -> Result<filter::Graph, ffmpeg::Error> {
@@ -32,10 +30,10 @@ fn filter(
         // out.set_sample_rate(encoder.rate());
     }
 
-    filter.output("in", 0)?.input("out", 0)?.parse(spec)?;
+    filter.output("in", 0)?.input("out", 0)?.parse("anull")?;
     filter.validate()?;
 
-    // println!("{}", filter.dump());
+    // tracing::trace!("{}", filter.dump());
 
     if let Some(codec) = encoder.codec() {
         if !codec
@@ -67,8 +65,7 @@ fn transcoder<P: AsRef<Path> + ?Sized>(
     ictx: &mut ffmpeg::format::context::Input,
     octx: &mut ffmpeg::format::context::Output,
     path: &P,
-    filter_spec: &str,
-) -> Result<Transcoder, ffmpeg::Error> {
+) -> anyhow::Result<Transcoder> {
     let input = ictx
         .streams()
         .best(media::Type::Audio)
@@ -79,6 +76,12 @@ fn transcoder<P: AsRef<Path> + ?Sized>(
         .expect("failed to find encoder")
         .audio()
         .expect("encoder is not audio encoder");
+
+    // if let Some(formats) = codec.formats() {
+    //     for f in formats {
+    //         tracing::info!(format = ?f, "Supported format");
+    //     }
+    // }
 
     tracing::info!(name = codec.description(), "codec");
     let global = octx
@@ -108,14 +111,12 @@ fn transcoder<P: AsRef<Path> + ?Sized>(
     );
     encoder.set_rate(decoder.rate() as i32);
     tracing::info!(rate = decoder.rate(), "Configured rate");
-    encoder.set_format(
-        codec
-            .formats()
-            .expect("unknown supported formats")
-            .next()
-            .unwrap(),
-    );
-    // tracing::info!(rate = decoder.bit_rate(), "Configured bit rate");
+
+    let dec_format = decoder.format();
+    let encoder_format = get_format(codec, dec_format)?;
+    encoder.set_format(encoder_format);
+    tracing::info!(enc_format = ?encoder_format, dec_format=?dec_format, "Configured format");
+
     encoder.set_max_bit_rate(decoder.max_bit_rate());
     if codec.description().contains("mp3") {
         let bit_rate = 64_000;
@@ -131,7 +132,7 @@ fn transcoder<P: AsRef<Path> + ?Sized>(
     let encoder = encoder.open_as(codec)?;
     output.set_parameters(Parameters::from(&encoder));
 
-    let filter = filter(filter_spec, &decoder, &encoder)?;
+    let filter = filter(&decoder, &encoder)?;
 
     let in_time_base = decoder.time_base();
     let out_time_base = output.time_base();
@@ -144,6 +145,18 @@ fn transcoder<P: AsRef<Path> + ?Sized>(
         in_time_base,
         out_time_base,
     })
+}
+
+fn get_format(
+    codec: codec::Codec<codec::codec::AudioType>,
+    decoder_format: ffmpeg_the_third::format::Sample,
+) -> anyhow::Result<ffmpeg_the_third::format::Sample> {
+    let encoder_format = codec
+        .formats()
+        .unwrap()
+        .find(|f| *f == decoder_format)
+        .unwrap_or_else(|| codec.formats().unwrap().next().unwrap());
+    Ok(encoder_format)
 }
 
 impl Transcoder {
@@ -195,7 +208,7 @@ impl Transcoder {
         {
             self.send_frame_to_encoder(&filtered)?;
             self.receive_and_process_encoded_packets(octx)?;
-            drop(filtered); 
+            drop(filtered);
             filtered = frame::Audio::empty();
         }
         Ok(())
@@ -228,10 +241,9 @@ impl Transcoder {
 
 #[tracing::instrument(skip(metadata))]
 pub fn transcode(input: &str, metadata: &[String], output: &str) -> anyhow::Result<()> {
-    let filter = env::args().nth(3).unwrap_or_else(|| "anull".to_owned());
     let mut ictx = ffmpeg::format::input(input)?;
     let mut octx = ffmpeg::format::output(output)?;
-    let mut transcoder = transcoder(&mut ictx, &mut octx, output, &filter)?;
+    let mut transcoder = transcoder(&mut ictx, &mut octx, output)?;
 
     let combined_metadata = prepare_metadata(ictx.metadata().to_owned(), metadata)?;
     octx.set_metadata(combined_metadata);
