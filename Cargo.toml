@@ -37,6 +37,9 @@ tokio-stream = "0.1"
 futures = "0.3"
 ffmpeg-the-third = { version = "3.0.1", features = [] } 
 http = "1.3"
+hound = "3.5"
+rubato = "0.16"
+rvoip-codec-core = "0.1.26"
 
 
 [build-dependencies]

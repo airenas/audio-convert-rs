@@ -1,7 +1,7 @@
 use audio_convert_rs::{
     SERVICE_NAME, ffmpeg, otel,
     proto_audio_convert::{self, audio_converter_server::AudioConverterServer},
-    service::Service,
+    service::Service, ulaw,
 };
 use clap::Parser;
 use tokio::signal::unix::{SignalKind, signal};
@@ -68,7 +68,8 @@ async fn main_int(args: Args) -> anyhow::Result<()> {
     tracing::info!(address = format!("{:?}", address), "address");
 
     let ffmpeg_wrapper = ffmpeg::wrapper::FFMpegWrapper::new()?;
-    let service = Service::new(ffmpeg_wrapper);
+    let ulaw_transcoder = ulaw::transcoder::ULaw::new()?;
+    let service = Service::new(ffmpeg_wrapper, ulaw_transcoder);
     let grpc_service = AudioConverterServer::new(service);
     let reflection_service = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(proto_audio_convert::FILE_DESCRIPTOR_SET)

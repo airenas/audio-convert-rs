@@ -6,6 +6,7 @@ use crate::{
     proto_audio_convert::{
         self, AudioFormat, ConvertInput, ConvertReply, StreamConvertInput, StreamFileReply,
     },
+    ulaw,
 };
 use anyhow::Context;
 use async_tempfile::TempDir;
@@ -22,12 +23,16 @@ use tracing::{instrument, Instrument};
 #[derive(Debug)]
 pub struct Service {
     transcoder: FFMpegWrapper,
+    ulaw_transcoder: ulaw::transcoder::ULaw,
 }
 
 impl Service {
-    pub fn new(transcoder: FFMpegWrapper) -> Self {
+    pub fn new(transcoder: FFMpegWrapper, ulaw_transcoder: ulaw::transcoder::ULaw) -> Self {
         tracing::info!("new service");
-        Self { transcoder }
+        Self {
+            transcoder,
+            ulaw_transcoder,
+        }
     }
 
     #[instrument(skip(request))]
@@ -49,13 +54,17 @@ impl Service {
         let output_path = Path::new(dir_str).join(prepare_output_file(audio_format)?);
         let output_file = output_path.to_str().unwrap();
 
-        transcode(
-            self.transcoder.clone(),
-            input_file,
-            &request.metadata,
-            output_file,
-        )
-        .await?;
+        if audio_format == AudioFormat::Ulaw {
+            transcode_ulaw(self.ulaw_transcoder.clone(), input_file, output_file).await?;
+        } else {
+            transcode(
+                self.transcoder.clone(),
+                input_file,
+                &request.metadata,
+                output_file,
+            )
+            .await?;
+        }
 
         let res = load_file(output_file).await?;
 
@@ -68,6 +77,7 @@ fn prepare_output_file(format: AudioFormat) -> anyhow::Result<String> {
     let ext = match format {
         AudioFormat::Mp3 => "mp3",
         AudioFormat::M4a => "m4a",
+        AudioFormat::Ulaw => "ulaw",
         AudioFormat::Unspecified => unreachable!(),
     };
     Ok(format!("output.{}", ext))
@@ -116,115 +126,122 @@ impl AudioConverter for Service {
 
         let (tx, rx) = tokio::sync::mpsc::channel(10);
         let transcoder = self.transcoder.clone();
+        let ulaw_transcoder = self.ulaw_transcoder.clone();
         tokio::spawn(
             async move {
-                if let Err(e) =
+                if let Err(e) = async {
+                    let dir = TempDir::new().await.with_context(|| "tmp dir create")?;
+                    let dir_str = dir.to_str().context("no tmp dir path")?;
+
+                    let mut metadata: Vec<String> = Vec::new();
+                    let input_path = Path::new(dir_str).join("input.wav");
+                    let input_file_name = input_path.to_str().unwrap();
+
+                    let mut output_file_name: Option<String> = None;
+                    let mut audio_format = AudioFormat::Unspecified;
+
+                    let save_span = tracing::info_span!("saving file");
                     async {
-                        let dir = TempDir::new().await.with_context(|| "tmp dir create")?;
-                        let dir_str = dir.to_str().context("no tmp dir path")?;
-
-                        let mut metadata: Vec<String> = Vec::new();
-                        let input_path = Path::new(dir_str).join("input.wav");
-                        let input_file_name = input_path.to_str().unwrap();
-
-                        let mut output_file_name: Option<String> = None;
-
-                        let save_span = tracing::info_span!("saving file");
-                        async {
-                            let mut input_file =
-                                File::create(input_file_name).await.context("file create")?;
-                            while let Some(Ok(input)) = input_stream.next().await {
-                                match input.payload {
-                            Some(proto_audio_convert::stream_convert_input::Payload::Metadata(
-                                meta,
-                            )) => {
-                                tracing::trace!("Received header: {:?}", meta);
-                                let audio_format =
-                                    AudioFormat::try_from(meta.format).map_err(|_| {
-                                        SrvError::InvalidArgument(format!(
-                                            "invalid audio format: {}",
-                                            meta.format
-                                        ))
-                                    })?;
-                                tracing::info!(format = audio_format.as_str_name());
-                                validate_format(audio_format)?;
-                                let output_path =
-                                    Path::new(dir_str).join(prepare_output_file(audio_format)?);
-                                output_file_name = Some(output_path.to_str().unwrap().to_string());
-                                metadata = meta.metadata.clone();
-                            }
-                            Some(proto_audio_convert::stream_convert_input::Payload::Chunk(
-                                chunk,
-                            )) => {
-                                tracing::trace!(
-                                    file = input_file_name,
-                                    len = chunk.len(),
-                                    "writing"
-                                );
-                                input_file.write_all(&chunk).await.context("write file")?
-                            }
-                            None => {
-                                return Err(SrvError::InvalidArgument(
-                                    "No payload in StreamConvertInput".to_string(),
-                                ));
+                        let mut input_file =
+                            File::create(input_file_name).await.context("file create")?;
+                        while let Some(Ok(input)) = input_stream.next().await {
+                            match input.payload {
+                                Some(
+                                    proto_audio_convert::stream_convert_input::Payload::Metadata(
+                                        meta,
+                                    ),
+                                ) => {
+                                    tracing::trace!("Received header: {:?}", meta);
+                                    audio_format =
+                                        AudioFormat::try_from(meta.format).map_err(|_| {
+                                            SrvError::InvalidArgument(format!(
+                                                "invalid audio format: {}",
+                                                meta.format
+                                            ))
+                                        })?;
+                                    tracing::info!(format = audio_format.as_str_name());
+                                    validate_format(audio_format)?;
+                                    let output_path =
+                                        Path::new(dir_str).join(prepare_output_file(audio_format)?);
+                                    output_file_name =
+                                        Some(output_path.to_str().unwrap().to_string());
+                                    metadata = meta.metadata.clone();
+                                }
+                                Some(
+                                    proto_audio_convert::stream_convert_input::Payload::Chunk(
+                                        chunk,
+                                    ),
+                                ) => {
+                                    tracing::trace!(
+                                        file = input_file_name,
+                                        len = chunk.len(),
+                                        "writing"
+                                    );
+                                    input_file.write_all(&chunk).await.context("write file")?
+                                }
+                                None => {
+                                    return Err(SrvError::InvalidArgument(
+                                        "No payload in StreamConvertInput".to_string(),
+                                    ));
+                                }
                             }
                         }
-                            }
-                            Ok::<(), SrvError>(())
-                        }
-                        .instrument(save_span)
-                        .await?;
+                        Ok::<(), SrvError>(())
+                    }
+                    .instrument(save_span)
+                    .await?;
 
-                        tracing::debug!("Saved file");
-                        match output_file_name {
-                            Some(name) => {
+                    tracing::debug!("Saved file");
+                    match output_file_name {
+                        Some(name) => {
+                            if audio_format == AudioFormat::Ulaw {
+                                transcode_ulaw(ulaw_transcoder, input_file_name, &name).await?;
+                            } else {
                                 transcode(transcoder, input_file_name, &metadata, &name).await?;
+                            }
 
-                                let write_span = tracing::info_span!("sending result");
-                                async {
-                                    tracing::debug!("Sending result");
-                                    let mut output_reader = tokio::fs::File::open(&name)
-                                        .await
-                                        .context(format!("can't open {}", name))?;
-                                    let mut buffer = vec![0u8; 1024 * 64];
-                                    loop {
-                                        match output_reader.read(&mut buffer).await {
-                                            Ok(0) => break,
-                                            Ok(n) => {
-                                                let reply = StreamFileReply {
-                                                    chunk: buffer[..n].to_vec(),
-                                                };
-                                                tracing::trace!(
-                                                    file = input_file_name,
-                                                    len = n,
-                                                    "sending"
-                                                );
-                                                tx.send(Ok(reply)).await.context("can't send")?;
-                                            }
-                                            Err(e) => {
-                                                tracing::error!(
-                                                    "Failed to read output file: {}",
-                                                    e
-                                                );
-                                                break;
-                                            }
+                            let write_span = tracing::info_span!("sending result");
+                            async {
+                                tracing::debug!("Sending result");
+                                let mut output_reader = tokio::fs::File::open(&name)
+                                    .await
+                                    .context(format!("can't open {}", name))?;
+                                let mut buffer = vec![0u8; 1024 * 64];
+                                loop {
+                                    match output_reader.read(&mut buffer).await {
+                                        Ok(0) => break,
+                                        Ok(n) => {
+                                            let reply = StreamFileReply {
+                                                chunk: buffer[..n].to_vec(),
+                                            };
+                                            tracing::trace!(
+                                                file = input_file_name,
+                                                len = n,
+                                                "sending"
+                                            );
+                                            tx.send(Ok(reply)).await.context("can't send")?;
+                                        }
+                                        Err(e) => {
+                                            tracing::error!("Failed to read output file: {}", e);
+                                            break;
                                         }
                                     }
-                                    Ok::<(), anyhow::Error>(())
                                 }
-                                .instrument(write_span)
-                                .await?;
+                                Ok::<(), anyhow::Error>(())
                             }
-                            None => {
-                                return Err(SrvError::InvalidArgument(
-                                    "No format provided".to_string(),
-                                ));
-                            }
+                            .instrument(write_span)
+                            .await?;
                         }
-                        tracing::debug!("Done");
-                        Ok(())
+                        None => {
+                            return Err(SrvError::InvalidArgument(
+                                "No format provided".to_string(),
+                            ));
+                        }
                     }
-                    .await
+                    tracing::debug!("Done");
+                    Ok(())
+                }
+                .await
                 {
                     tracing::error!("Error in convert_stream: {}", e);
                     let _ = tx
@@ -305,5 +322,26 @@ async fn transcode(
     .await??;
 
     tracing::debug!("ffmpeg done");
+    Ok(())
+}
+
+#[instrument()]
+async fn transcode_ulaw(
+    transcoder: ulaw::transcoder::ULaw,
+    input: &str,
+    output: &str,
+) -> anyhow::Result<()> {
+    tracing::debug!("call ffmpeg");
+    let input = input.to_string();
+    let output = output.to_string();
+
+    let span = tracing::info_span!("spawn_blocking_transcode");
+    tokio::task::spawn_blocking(move || {
+        let _enter = span.enter();
+        transcoder.transcode(&input, &output).context("transcode")
+    })
+    .await??;
+
+    tracing::debug!("ulaw done");
     Ok(())
 }

@@ -7,6 +7,8 @@ pub mod proto_audio_convert {
 pub mod otel;
 pub mod service;
 pub mod ffmpeg;
+pub mod ulaw;
+
 
 pub const SERVICE_NAME: &str = "audio-convert-rs";
 
