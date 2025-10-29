@@ -59,7 +59,10 @@ impl Service {
         let output_file = output_path.to_str().unwrap();
 
         if audio_format == AudioFormat::Ulaw {
-            transcode_ulaw(self.ulaw_transcoder.clone(), input_file, output_file).await?;
+            tracing::debug!("call ulaw stream transcode");
+            let file = File::create(output_file).await.context("file create")?;
+            let writer = tokio::io::BufWriter::new(file);
+            stream_transcode_ulaw(self.ulaw_transcoder.clone(), input_file, writer).await?;
         } else {
             transcode(
                 self.transcoder.clone(),
@@ -368,27 +371,6 @@ async fn transcode<P: AsRef<std::path::Path> + Clone + std::fmt::Debug>(
     .await??;
 
     tracing::debug!("ffmpeg done");
-    Ok(())
-}
-
-#[instrument()]
-async fn transcode_ulaw<P: AsRef<std::path::Path> + Clone + std::fmt::Debug>(
-    transcoder: ulaw::transcoder::ULaw,
-    input: &str,
-    output: P,
-) -> anyhow::Result<()> {
-    tracing::debug!("call ulaw transcode");
-    let input = input.to_string();
-    let output = output.as_ref().to_string_lossy().to_string();
-
-    let span = tracing::info_span!("spawn_blocking_transcode");
-    tokio::task::spawn_blocking(move || {
-        let _enter = span.enter();
-        transcoder.transcode(&input, &output).context("transcode")
-    })
-    .await??;
-
-    tracing::debug!("ulaw done");
     Ok(())
 }
 

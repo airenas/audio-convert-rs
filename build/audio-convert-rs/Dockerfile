@@ -27,7 +27,7 @@ RUN apt install -y \
       protobuf-compiler \
       make
 
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.85.0
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.90.0
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN rustc --version && cargo --version      
 
