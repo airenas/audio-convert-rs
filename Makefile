@@ -1,5 +1,6 @@
 -include Makefile.options
 stream?=
+RUST_LOG?=DEBUG,h2=INFO,tonic=INFO,h2::codec=INFO
 #####################################################################################
 ## print usage information
 help:
@@ -10,7 +11,7 @@ help:
 #####################################################################################
 ## run the server
 run:
-	RUST_LOG=TRACE,h2=INFO,tonic=INFO cargo run --bin audio-convert-rs -- 
+	cargo run --bin audio-convert-rs -- 
 .PHONY: run
 ###############################################################################
 file?=1.wav
@@ -19,7 +20,7 @@ run/client:
 .PHONY: run/client
 ###############################################################################
 run/build: build/local
-	RUST_LOG=DEBUG target/release/audio-convert-rs --
+	target/release/audio-convert-rs --
 .PHONY: run/build
 ###############################################################################
 ## build the server
@@ -42,3 +43,5 @@ test/lint:
 clean:
 	cargo clean
 .PHONY: clean
+
+.EXPORT_ALL_VARIABLES:

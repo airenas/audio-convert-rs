@@ -132,6 +132,7 @@ async fn stream_file(
             }
             offset = end;
         }
+        tracing::info!("Finished sending audio data");
     });
 
     let mut request = tonic::Request::new(input_stream);
@@ -145,10 +146,12 @@ async fn stream_file(
     let mut response_stream = client.convert_stream(request).await?.into_inner();
 
     let mut converted_audio = Vec::new();
+    tracing::info!("Started reading...");
     while let Some(response) = response_stream.next().await {
         let response = response?;
         converted_audio.extend(response.chunk);
     }
+    tracing::info!("Finished receiving audio data");
 
     Ok(converted_audio)
 }
