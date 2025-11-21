@@ -204,7 +204,7 @@ impl AudioConverter for Service {
                     }
                     .await
                     {
-                        tracing::error!("Error in convert_stream: {}", e);
+                        tracing::error!("Error in convert_stream: {:?}", e);
                         let _ = tx
                             .send(Err(Status::internal(format!("Error: {}", e))))
                             .await;
@@ -291,7 +291,7 @@ impl AudioConverter for Service {
                     }
                     .await
                     {
-                        tracing::error!("Error in convert_stream: {}", e);
+                        tracing::error!("Error in convert_stream: {:?}", e);
                         let _ = tx
                             .send(Err(Status::internal(format!("Error: {}", e))))
                             .await;
