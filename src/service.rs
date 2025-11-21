@@ -191,6 +191,8 @@ impl AudioConverter for Service {
                                     ));
                                 }
                             }
+                            input_file.sync_all().await.context("sync file")?;
+                            tracing::trace!("Finished saving input file");
                             Ok::<(), SrvError>(())
                         }
                         .instrument(save_span)
@@ -250,6 +252,8 @@ impl AudioConverter for Service {
                                     ));
                                 }
                             }
+                            input_file.sync_all().await.context("sync file")?;
+                            tracing::trace!("Finished saving input file");
                             Ok::<(), SrvError>(())
                         }
                         .instrument(save_span)
