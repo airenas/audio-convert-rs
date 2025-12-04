@@ -52,3 +52,9 @@ path = "src/main.rs"
 [[bin]]
 name = "audio-convert-rs-cl"
 path = "src/example/main.rs"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "thin"
+debug = false
