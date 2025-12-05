@@ -31,7 +31,9 @@ jobs:
           && sudo apt-get update \
           && sudo apt-get install -y \
           clang \
-          libmp3lame-dev
+          libmp3lame-dev \
+          nasm \
+          yasm
       - name: build ffmpeg
         run: |
           cd ffmpeg && make prepare/zig prepare
