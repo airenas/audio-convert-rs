@@ -1,6 +1,10 @@
 -include Makefile.options
 stream?=
 RUST_LOG?=DEBUG,h2=INFO,tonic=INFO,h2::codec=INFO
+LD_LIBRARY_PATH?=$(shell pwd)/ffmpeg/ffmpeg-libs/lib
+LIBRARY_PATH:=${LD_LIBRARY_PATH}
+PKG_CONFIG_PATH?=$(shell pwd)/ffmpeg/ffmpeg-libs/lib/pkgconfig
+C_INCLUDE_PATH?=$(shell pwd)/ffmpeg/ffmpeg-libs/include
 #####################################################################################
 ## print usage information
 help:
@@ -11,7 +15,7 @@ help:
 #####################################################################################
 ## run the server
 run:
-	cargo run --bin audio-convert-rs -- 
+	cargo run --bin audio-convert-rs --features ffmpeg-7_1 -- 
 .PHONY: run
 ###############################################################################
 file?=1.wav
@@ -25,7 +29,7 @@ run/build: build/local
 ###############################################################################
 ## build the server
 build/local: 
-	cargo build --release
+	cargo build --release  -vv
 .PHONY: build/local
 ###############################################################################
 ## run unit tests
@@ -39,6 +43,11 @@ test/lint:
 	cargo clippy --all-targets --all-features -- -D warnings
 .PHONY: test/lint	
 ###############################################################################
+# prepare ffmpeg
+###############################################################################
+prepare/ffmpeg: 
+	cd ffmpeg && $(MAKE) prepare
+####################################################################################
 ## clean all
 clean:
 	cargo clean

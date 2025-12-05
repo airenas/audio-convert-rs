@@ -8,6 +8,20 @@ A lightweight Rust microservice for converting `.wav` audio files to `.mp3` and 
 
 Refer to this [Dockerfile](build/audio-convert-rs/Dockerfile) for information on how the service code is built on Ubuntu.
 
+### Locally
+
+- Prepare ffmpeg library
+  - Install zig
+  ```bash
+  curl -LO https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz \
+    && tar -xf zig-x86_64-linux-0.15.2.tar.xz \
+    && mv zig-x86_64-linux-0.15.2 /opt/zig \
+    && ln -s /opt/zig/zig /usr/local/bin/zig
+  ```
+  - build ffmpeg `make prepare/ffmpeeg`
+  - build service `make build/local` 
+
+
 ## Testing Locally
 
 1. **Run the Service** (Default port is `50051`):

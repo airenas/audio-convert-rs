@@ -20,3 +20,6 @@ target/
 
 /target
 example/load/.data
+ffmpeg/.done
+ffmpeg/ffmpeg-libs/*
+ffmpeg/FFmpeg/*
