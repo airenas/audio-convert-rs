@@ -62,6 +62,7 @@ RUN make -j$(nproc) \
 #########################################################################################
 FROM base-builder AS builder
 RUN apt install -y \
+      binutils \
       clang \
       libprotobuf-dev \
       protobuf-compiler \
@@ -96,6 +97,7 @@ COPY src /src/src
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
       CARGO_APP_VERSION=$BUILD_VERSION cargo build --release 
+RUN strip /src/target/release/audio-convert-rs
 #########################################################################################
 FROM base AS runner
 #########################################################################################
