@@ -32,7 +32,7 @@ pub struct Service {
 
 impl Service {
     pub fn new(transcoder: FFMpegWrapper, ulaw_transcoder: ulaw::transcoder::ULaw) -> Self {
-        tracing::info!("new service");
+        tracing::info!("new ulaw service");
         Self {
             transcoder,
             ulaw_transcoder,

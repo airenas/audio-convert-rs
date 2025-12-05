@@ -100,8 +100,8 @@ RUN strip /src/target/release/audio-convert-rs
 FROM base AS runner
 #########################################################################################
 RUN apt-get update && \
-      apt-get install -y \
-      libmp3lame0
+    apt-get install -y --no-install-recommends libmp3lame0 && \
+    rm -rf /var/lib/apt/lists/*
 
 COPY LICENSE /licenses/LICENSE-gnu
 
