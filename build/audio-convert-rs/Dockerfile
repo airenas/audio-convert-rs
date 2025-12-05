@@ -2,18 +2,16 @@
 ## docker will invoke this file from ../.. dir in order to access code
 #########################################################################################
 FROM ubuntu:22.04 AS base
-RUN apt-get update && \
-      apt-get install -y \
-      libmp3lame-dev
-
 #########################################################################################
 ## base builder
 #########################################################################################
 FROM base AS base-builder
-RUN apt-get install -y \
+RUN apt-get update && \
+      apt-get install -y \
       curl \
       git \
       pkg-config \
+      libmp3lame-dev \
       software-properties-common
 #########################################################################################
 ## build FFmpeg with static libs for linking into final binary
@@ -61,7 +59,7 @@ RUN make -j$(nproc) \
 
 #########################################################################################
 FROM base-builder AS builder
-RUN apt install -y \
+RUN apt-get install -y \
       binutils \
       clang \
       libprotobuf-dev \
@@ -101,6 +99,10 @@ RUN strip /src/target/release/audio-convert-rs
 #########################################################################################
 FROM base AS runner
 #########################################################################################
+RUN apt-get update && \
+      apt-get install -y \
+      libmp3lame0
+
 COPY LICENSE /licenses/LICENSE-gnu
 
 WORKDIR /app
