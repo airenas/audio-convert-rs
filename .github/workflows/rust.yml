@@ -34,7 +34,7 @@ jobs:
           libmp3lame-dev
       - name: build ffmpeg
         run: |
-          cd ffmpeg && $(MAKE) prepare/zig prepare
+          cd ffmpeg && make prepare/zig prepare
           
       - name: Build 
         run: make build/local     
