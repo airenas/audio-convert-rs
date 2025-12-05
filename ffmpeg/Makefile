@@ -33,8 +33,15 @@ FFmpeg:
 	cd FFmpeg && make install	
 	touch $@
 ####################################################################################
+prepare/zig:
+	curl -LO https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz \
+		&& tar -xf zig-x86_64-linux-0.15.2.tar.xz \
+		&& mv zig-x86_64-linux-0.15.2 /opt/zig \
+		&& ln -s /opt/zig/zig /usr/local/bin/zig
+####################################################################################
 clean:
 	rm -rf FFmpeg $(lib)
 .PHONY: clean
+####################################################################################
 
 .EXPORT_ALL_VARIABLES:

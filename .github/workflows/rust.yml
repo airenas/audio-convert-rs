@@ -30,15 +30,11 @@ jobs:
           sudo add-apt-repository ppa:ubuntuhandbook1/ffmpeg7 \
           && sudo apt-get update \
           && sudo apt-get install -y \
-          ffmpeg \
           clang \
-          libavcodec-dev \
-          libavformat-dev \
-          libavutil-dev \
-          libavdevice-dev \
-          libprotobuf-dev \
-          libswresample-dev \
-          libswscale-dev
+          libmp3lame-dev
+      - name: build ffmpeg
+        run: |
+          cd ffmpeg && $(MAKE) prepare/zig prepare
           
       - name: Build 
         run: make build/local     
