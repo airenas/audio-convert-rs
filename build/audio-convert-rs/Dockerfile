@@ -97,6 +97,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
       CARGO_APP_VERSION=$BUILD_VERSION cargo build --release 
 RUN strip /src/target/release/audio-convert-rs
 #########################################################################################
+FROM ghcr.io/lvillis/salus:0.1.10 AS salus
+#########################################################################################
 FROM base AS runner
 #########################################################################################
 RUN apt-get update && \
@@ -119,8 +121,13 @@ LABEL org.opencontainers.image.version=$BUILD_VERSION \
       summary="This image is used to host audio converter service" \
       description="This image is used to host audio converter service" 
 
+COPY --from=salus /bin/salus /app/salus      
+
 ENV RUST_LOG=trace,h2=info
 
 COPY --from=builder /src/target/release/audio-convert-rs /app/
+
+HEALTHCHECK --start-period=3s --interval=10s --timeout=3s --retries=3 \
+  CMD ["/app/salus", "grpc", "--addr", "127.0.0.1:50051"]
 
 ENTRYPOINT ["/app/audio-convert-rs"]
