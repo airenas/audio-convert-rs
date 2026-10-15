@@ -70,7 +70,7 @@ RUN apt-get install -y \
 ENV RUSTFLAGS="-C target-cpu=haswell -C opt-level=3 -C codegen-units=1"
 ENV CARGO_PROFILE_RELEASE_DEBUG=false      
 
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.90.0
+RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.99.0
 ENV PATH="/root/.cargo/bin:${PATH}"
 RUN rustc --version && cargo --version      
 

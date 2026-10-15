@@ -1,10 +1,11 @@
 use audio_convert_rs::{
-    SERVICE_NAME, ffmpeg, otel,
+    ffmpeg, otel,
     proto_audio_convert::{self, audio_converter_server::AudioConverterServer},
-    service::Service, ulaw,
+    service::Service,
+    ulaw, SERVICE_NAME,
 };
 use clap::Parser;
-use tokio::signal::unix::{SignalKind, signal};
+use tokio::signal::unix::{signal, SignalKind};
 use tokio_util::sync::CancellationToken;
 use tonic::transport::Server;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -28,9 +29,16 @@ async fn main() -> anyhow::Result<()> {
     let tracer = provider.tracer(SERVICE_NAME);
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
+    let json_logs = std::env::var("LOG_FORMAT").is_ok_and(|v| v.eq_ignore_ascii_case("json"));
+    let (fmt_json, fmt_text) = if json_logs {
+        (Some(tracing_subscriber::fmt::layer().json()), None)
+    } else {
+        (None, Some(tracing_subscriber::fmt::layer().compact()))
+    };
     tracing_subscriber::registry()
         .with(tracing_subscriber::EnvFilter::from_default_env())
-        .with(tracing_subscriber::fmt::Layer::default().compact())
+        .with(fmt_json)
+        .with(fmt_text)
         .with(telemetry)
         .init();
     tracing::info!(info = tr_info, "tracer");

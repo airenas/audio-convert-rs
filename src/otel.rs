@@ -1,10 +1,10 @@
 use std::env;
 use std::time::Duration;
 
-use opentelemetry::Context;
-use opentelemetry::KeyValue;
 use opentelemetry::global;
 use opentelemetry::trace::TraceContextExt;
+use opentelemetry::Context;
+use opentelemetry::KeyValue;
 use opentelemetry_http::HeaderExtractor;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::propagation::TraceContextPropagator;

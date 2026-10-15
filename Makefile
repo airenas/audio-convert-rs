@@ -42,6 +42,20 @@ test/lint:
 	@cargo clippy -V
 	cargo clippy --all-targets --all-features -- -D warnings
 .PHONY: test/lint	
+test/coverage:
+	cargo tarpaulin --ignore-tests
+.PHONY: test/coverage
+.PHONY: test/unit	
+test/format:
+	cargo fmt -- --check
+.PHONY: test/format
+audit:
+	cargo audit
+.PHONY: audit
+install/checks:
+	cargo install cargo-audit
+	cargo install cargo-tarpaulin
+.PHONY: install/checks
 ###############################################################################
 # prepare ffmpeg
 ###############################################################################

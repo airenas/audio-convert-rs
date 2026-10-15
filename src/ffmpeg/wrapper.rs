@@ -12,12 +12,7 @@ impl FFMpegWrapper {
     }
 
     #[tracing::instrument(skip(self, input, metadata, output))]
-    pub fn transcode(
-        &self,
-        input: &str,
-        metadata: &[String],
-        output: &str,
-    ) -> anyhow::Result<()> {
+    pub fn transcode(&self, input: &str, metadata: &[String], output: &str) -> anyhow::Result<()> {
         transcode(input, metadata, output)
     }
 }
