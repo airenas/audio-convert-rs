@@ -48,9 +48,11 @@ impl Service {
         })?;
         validate_format(audio_format)?;
 
-        let dir = TempDir::new_in(Path::new("/dev/shm")).await.with_context(|| "tmp dir create")?;
+        let dir = TempDir::new_in(Path::new("/dev/shm"))
+            .await
+            .with_context(|| "tmp dir create")?;
         let dir_str = dir.to_str().context("no tmp dir path")?;
-    
+
         let input_path = Path::new(dir_str).join("input.wav");
         let input_file = input_path.to_str().unwrap();
         save_audio(input_file, &request.data).await?;
@@ -162,7 +164,9 @@ impl AudioConverter for Service {
             tokio::spawn(
                 async move {
                     if let Err(e) = async {
-                        let dir = TempDir::new_in(Path::new("/dev/shm")).await.with_context(|| "tmp dir create")?;
+                        let dir = TempDir::new_in(Path::new("/dev/shm"))
+                            .await
+                            .with_context(|| "tmp dir create")?;
                         let dir_str = dir.to_str().context("no tmp dir path")?;
 
                         let input_path = Path::new(dir_str).join("input.wav");
@@ -220,7 +224,9 @@ impl AudioConverter for Service {
             tokio::spawn(
                 async move {
                     if let Err(e) = async {
-                        let dir = TempDir::new_in(Path::new("/dev/shm")).await.with_context(|| "tmp dir create")?;
+                        let dir = TempDir::new_in(Path::new("/dev/shm"))
+                            .await
+                            .with_context(|| "tmp dir create")?;
                         let dir_str = dir.to_str().context("no tmp dir path")?;
 
                         let input_path = Path::new(dir_str).join("input.wav");
