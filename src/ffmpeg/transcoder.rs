@@ -224,7 +224,7 @@ impl Transcoder {
         {
             self.send_frame_to_encoder(&filtered)?;
             self.receive_and_process_encoded_packets(octx)?;
-            drop(filtered);
+            // drop(filtered);
             filtered = frame::Audio::empty();
         }
         Ok(())

@@ -1,6 +1,10 @@
 #########################################################################################
 ## docker will invoke this file from ../.. dir in order to access code
 #########################################################################################
+## versions
+ARG FFMPEG_VERSION=9.0
+ARG LAME_VERSION=4.0
+#########################################################################################
 FROM ubuntu:22.04 AS base
 #########################################################################################
 ## base builder
@@ -34,8 +38,12 @@ RUN zig version
 
 WORKDIR /ffmpeg
 
-ENV FFMPEG_VERSION=9.0
-ENV LAME_VERSION=4.0
+#####################################################
+ARG FFMPEG_VERSION
+ARG LAME_VERSION
+ENV FFMPEG_VERSION=$FFMPEG_VERSION
+ENV LAME_VERSION=$LAME_VERSION
+#####################################################
 
 RUN git clone --depth 1 --branch n$FFMPEG_VERSION https://github.com/FFmpeg/FFmpeg.git .
 
@@ -97,7 +105,11 @@ ENV LIBRARY_PATH=/ffmpeg-lib/lib
 ENV PKG_CONFIG_PATH=/ffmpeg-lib/lib/pkgconfig
 ENV C_INCLUDE_PATH=/ffmpeg-lib/include
 
+#####################################################
+ARG FFMPEG_VERSION
+ARG LAME_VERSION
 ARG BUILD_VERSION=0.1
+#####################################################
 
 WORKDIR /src/
 
@@ -109,7 +121,9 @@ COPY src /src/src
 
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-      CARGO_APP_VERSION=$BUILD_VERSION cargo build --release 
+      CARGO_APP_VERSION=$BUILD_VERSION \
+      CARGO_FFMPEG_VERSION=$FFMPEG_VERSION CARGO_LAME_VERSION=$LAME_VERSION \
+       cargo build --release 
 RUN strip /src/target/release/audio-convert-rs
 #########################################################################################
 FROM ghcr.io/lvillis/salus:0.1.10 AS salus

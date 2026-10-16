@@ -4,6 +4,10 @@ use std::{env, path::PathBuf};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let v = option_env!("CARGO_APP_VERSION").unwrap_or("dev");
     println!("cargo:rustc-env=CARGO_APP_VERSION={v}");
+    let v = option_env!("CARGO_FFMPEG_VERSION").unwrap_or("dev");
+    println!("cargo:rustc-env=CARGO_FFMPEG_VERSION={v}");
+    let v = option_env!("CARGO_LAME_VERSION").unwrap_or("dev");
+    println!("cargo:rustc-env=CARGO_LAME_VERSION={v}");
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     tonic_build::configure()

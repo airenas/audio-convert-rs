@@ -53,6 +53,8 @@ async fn main() -> anyhow::Result<()> {
 async fn main_int(args: Args) -> anyhow::Result<()> {
     tracing::info!(name = SERVICE_NAME, "Starting GRPC service");
     tracing::info!(version = env!("CARGO_APP_VERSION"));
+    tracing::info!(ffmpeg_version = env!("CARGO_FFMPEG_VERSION"));
+    tracing::info!(lame_version = env!("CARGO_LAME_VERSION"));
     tracing::info!(port = args.port);
 
     let cancel_token = CancellationToken::new();
