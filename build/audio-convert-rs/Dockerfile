@@ -11,8 +11,8 @@ RUN apt-get update && \
       curl \
       git \
       pkg-config \
-      libmp3lame-dev \
       software-properties-common
+      # libmp3lame-dev \
 #########################################################################################
 ## build FFmpeg with static libs for linking into final binary
 #########################################################################################
@@ -34,13 +34,27 @@ RUN zig version
 
 WORKDIR /ffmpeg
 
-ENV FFMPEG_VERSION=7.1.3
+ENV FFMPEG_VERSION=9.0
+ENV LAME_VERSION=4.0
 
 RUN git clone --depth 1 --branch n$FFMPEG_VERSION https://github.com/FFmpeg/FFmpeg.git .
 
 ENV CC="zig cc"
 ENV CXX="zig c++"
 ENV AR="zig ar"
+
+# LAME built from source with CPU-specific optimizations (distro build targets baseline x86-64)
+RUN mkdir /lame && cd /lame \
+    && curl -fsSL https://downloads.sourceforge.net/project/lame/lame/$LAME_VERSION/lame-$LAME_VERSION.tar.gz | tar -xz --strip-components=1 \
+    && RANLIB="zig ranlib" CFLAGS="-O3 -march=haswell -fno-sanitize=undefined" ./configure \
+       --prefix=/ffmpeg-lib \
+       --disable-shared \
+       --enable-static \
+       --disable-frontend \
+       --disable-decoder \
+       --enable-nasm \
+    && make -j$(nproc) \
+    && make install
 
 RUN ./configure \
     --prefix=/ffmpeg-lib \
@@ -51,8 +65,9 @@ RUN ./configure \
     --disable-debug \
     --disable-doc \
     --enable-libmp3lame \
-    --extra-cflags="-O3 -march=haswell" \
-    --extra-ldflags="-static"
+    --pkg-config-flags="--static" \
+    --extra-cflags="-O3 -march=haswell -I/ffmpeg-lib/include" \
+    --extra-ldflags="-static -L/ffmpeg-lib/lib"
 
 RUN make -j$(nproc) \
       && make install

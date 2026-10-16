@@ -1,6 +1,6 @@
 -include Makefile.options
 lib=$(shell pwd)/ffmpeg-libs
-ffmpeg_version=7.1.3
+ffmpeg_version=9.0
 #####################################################################################
 ## print usage information
 help:
@@ -27,6 +27,7 @@ FFmpeg:
      --disable-debug \
      --disable-doc \
      --enable-libmp3lame \
+	 --pkg-config-flags="--static" \
      --extra-cflags="-O3 -march=haswell" \
      --extra-ldflags="-static"
 	cd FFmpeg && make -j12

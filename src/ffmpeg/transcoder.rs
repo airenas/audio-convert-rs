@@ -2,6 +2,7 @@ use ffmpeg_the_third::{self as ffmpeg, Dictionary};
 
 use std::path::Path;
 
+use ffmpeg::codec::config::Supported;
 use ffmpeg::codec::Parameters;
 use ffmpeg::{codec, filter, frame, media};
 
@@ -21,14 +22,13 @@ fn filter(
     );
 
     filter.add(&filter::find("abuffer").unwrap(), "in", &args)?;
-    filter.add(&filter::find("abuffersink").unwrap(), "out", "")?;
-
-    {
-        let mut out = filter.get("out").unwrap();
-        out.set_sample_format(encoder.format());
-        out.set_ch_layout(encoder.ch_layout());
-        // out.set_sample_rate(encoder.rate());
-    }
+    // sink constraints are init-time options in newer ffmpeg, they can't be set after add()
+    let sink_args = format!(
+        "sample_formats={}:channel_layouts={}",
+        encoder.format().name(),
+        encoder.ch_layout().description()
+    );
+    filter.add(&filter::find("abuffersink").unwrap(), "out", &sink_args)?;
 
     filter.output("in", 0)?.input("out", 0)?.parse("anull")?;
     filter.validate()?;
@@ -99,10 +99,10 @@ fn transcoder<P: AsRef<Path> + ?Sized>(
         encoder.set_flags(ffmpeg::codec::flag::Flags::GLOBAL_HEADER);
     }
 
-    let channel_layout = codec
-        .ch_layouts()
-        .map(|cls| cls.best(decoder.ch_layout().channels()))
-        .unwrap_or(ffmpeg::channel_layout::ChannelLayout::MONO);
+    let channel_layout = match codec.supported_layouts() {
+        Supported::Specific(cls) => cls.best(decoder.ch_layout().channels()),
+        Supported::All => ffmpeg::channel_layout::ChannelLayout::MONO,
+    };
     tracing::info!(channel_layout = ?channel_layout, "Configured channel layout");
     encoder.set_ch_layout(channel_layout);
     tracing::info!(
@@ -151,12 +151,18 @@ fn get_format(
     codec: codec::Codec<codec::codec::AudioType>,
     decoder_format: ffmpeg_the_third::format::Sample,
 ) -> anyhow::Result<ffmpeg_the_third::format::Sample> {
-    let encoder_format = codec
-        .formats()
-        .unwrap()
-        .find(|f| *f == decoder_format)
-        .unwrap_or_else(|| codec.formats().unwrap().next().unwrap());
-    Ok(encoder_format)
+    match codec.supported_formats() {
+        Supported::All => Ok(decoder_format),
+        Supported::Specific(formats) => {
+            let formats: Vec<_> = formats.collect();
+            formats
+                .iter()
+                .find(|f| **f == decoder_format)
+                .or(formats.first())
+                .copied()
+                .ok_or_else(|| anyhow::anyhow!("encoder reports no sample formats"))
+        }
+    }
 }
 
 impl Transcoder {
@@ -244,9 +250,9 @@ pub fn transcode(input: &str, metadata: &[String], output: &str) -> anyhow::Resu
     let mut ictx = ffmpeg::format::input(input)?;
     let mut octx = ffmpeg::format::output(output)?;
     let mut transcoder = transcoder(&mut ictx, &mut octx, output)?;
-
-    let combined_metadata = prepare_metadata(ictx.metadata().to_owned(), metadata)?;
-    octx.set_metadata(combined_metadata);
+    
+    let combined_metadata = prepare_metadata(ictx.metadata().iter(), metadata)?;
+    octx.metadata_mut().replace_with(combined_metadata);
     octx.write_header()?;
 
     for (stream, mut packet) in ictx.packets().filter_map(Result::ok) {
@@ -278,11 +284,10 @@ pub fn transcode(input: &str, metadata: &[String], output: &str) -> anyhow::Resu
 }
 
 fn prepare_metadata<'a>(
-    metadata: Dictionary<'a>,
+    metadata: impl Iterator<Item = (&'a str, &'a str)>,
     metadata_add: &[String],
-) -> anyhow::Result<Dictionary<'a>> {
-    let mut combined_metadata = metadata;
-
+) -> anyhow::Result<Dictionary> {
+    let mut combined_metadata: Dictionary = metadata.collect();
     // Add additional metadata to the dictionary
     for s in metadata_add.iter() {
         let mut parts = s.splitn(2, '=');

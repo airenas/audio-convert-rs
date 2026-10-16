@@ -1,5 +1,4 @@
 -include Makefile.options
-stream?=
 RUST_LOG?=DEBUG,h2=INFO,tonic=INFO,h2::codec=INFO
 LD_LIBRARY_PATH?=$(shell pwd)/ffmpeg/ffmpeg-libs/lib
 LIBRARY_PATH:=${LD_LIBRARY_PATH}
@@ -15,12 +14,15 @@ help:
 #####################################################################################
 ## run the server
 run:
-	cargo run --bin audio-convert-rs --features ffmpeg-7_1 -- 
+# 	cargo run --bin audio-convert-rs --features ffmpeg-7_1 -- 
+	cargo run --bin audio-convert-rs -- 
 .PHONY: run
 ###############################################################################
 file?=1.wav
+format?=MP3
+stream?=
 run/client:
-	RUST_LOG=TRACE,h2=INFO,tonic=INFO cargo run --bin audio-convert-rs-cl -- -i $(file) ${stream}
+	RUST_LOG=TRACE,h2=INFO,tonic=INFO cargo run --bin audio-convert-rs-cl -- -i $(file) ${stream}  --format=$(format)
 .PHONY: run/client
 ###############################################################################
 run/build: build/local

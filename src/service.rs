@@ -39,7 +39,7 @@ impl Service {
         }
     }
 
-    #[instrument(skip(request))]
+    #[instrument(skip(self, request))]
     async fn convert(&self, request: &ConvertInput) -> Result<ConvertReply, SrvError> {
         tracing::info!(len = request.data.len(), "got a request");
 
@@ -353,7 +353,7 @@ impl From<SrvError> for Status {
     }
 }
 
-#[instrument(skip(metadata))]
+#[instrument(skip(transcoder, metadata))]
 async fn transcode<P: AsRef<std::path::Path> + Clone + std::fmt::Debug>(
     transcoder: FFMpegWrapper,
     input: &str,
@@ -378,7 +378,7 @@ async fn transcode<P: AsRef<std::path::Path> + Clone + std::fmt::Debug>(
     Ok(())
 }
 
-#[instrument(skip(writer))]
+#[instrument(skip(transcoder, writer))]
 async fn stream_transcode_ulaw<W: AsyncWrite + Unpin + Send>(
     transcoder: ulaw::transcoder::ULaw,
     input: &str,
