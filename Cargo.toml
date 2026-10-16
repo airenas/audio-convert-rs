@@ -40,7 +40,7 @@ http = "1.3"
 hound = "3.5"
 rubato = "0.16"
 rvoip-codec-core = "0.1"
-sysinfo = "0.39"
+nix = { version = "0.29", features = ["fs"] }
 humansize = "2.1"
 
 

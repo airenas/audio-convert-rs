@@ -7,7 +7,6 @@ use audio_convert_rs::{
     ulaw, SERVICE_NAME,
 };
 use clap::Parser;
-use sysinfo::Disks;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio_util::sync::CancellationToken;
 use tonic::transport::Server;
@@ -63,7 +62,7 @@ async fn main_int(args: Args) -> anyhow::Result<()> {
     tracing::info!(lame_version = env!("CARGO_LAME_VERSION"));
     tracing::info!(port = args.port);
     let available_space =
-        humansize::format_size(get_space_for_path(&args.tmp_storage)?, humansize::DECIMAL);
+        humansize::format_size(get_space_for_path(&args.tmp_storage)?, humansize::BINARY);
     tracing::info!(
         tmp_storage = args.tmp_storage,
         available_space = available_space
@@ -117,18 +116,8 @@ async fn main_int(args: Args) -> anyhow::Result<()> {
 }
 
 fn get_space_for_path(path_str: &str) -> anyhow::Result<u64> {
-    let disks = Disks::new_with_refreshed_list();
-    let target_path = Path::new(path_str);
-
-    if let Some(disk) = disks
-        .iter()
-        .find(|d| target_path.starts_with(d.mount_point()))
-    {
-        Ok(disk.available_space())
-    } else {
-        Err(anyhow::anyhow!(
-            "Could not find disk for path: {}",
-            path_str
-        ))
-    }
+    let path = Path::new(path_str);
+    let stat = nix::sys::statvfs::statvfs(path)?;
+    let available_space = stat.blocks_available() * stat.block_size() as u64;
+    Ok(available_space)
 }
