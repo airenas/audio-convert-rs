@@ -12,13 +12,21 @@ fn filter(
 ) -> Result<filter::Graph, ffmpeg::Error> {
     let mut filter = filter::Graph::new();
 
-    let channel_layout = format!("0x{:x}", 2);
+    let mut in_layout = decoder.ch_layout();
+    if matches!(
+        in_layout.order(),
+        ffmpeg::channel_layout::ChannelOrder::Unspecified
+    ) {
+        in_layout =
+            ffmpeg::channel_layout::ChannelLayout::default_for_channels(in_layout.channels());
+    }
 
     let args = format!(
-        "time_base={}:sample_rate={}:sample_fmt={}:channel_layout={channel_layout}",
+        "time_base={}:sample_rate={}:sample_fmt={}:channel_layout={}",
         decoder.time_base(),
         decoder.rate(),
-        decoder.format().name()
+        decoder.format().name(),
+        in_layout.description()
     );
 
     filter.add(&filter::find("abuffer").unwrap(), "in", &args)?;
@@ -33,7 +41,7 @@ fn filter(
     filter.output("in", 0)?.input("out", 0)?.parse("anull")?;
     filter.validate()?;
 
-    // tracing::trace!("{}", filter.dump());
+    tracing::trace!("{}", filter.dump());
 
     if let Some(codec) = encoder.codec() {
         if !codec
@@ -155,9 +163,11 @@ fn get_format(
         Supported::All => Ok(decoder_format),
         Supported::Specific(formats) => {
             let formats: Vec<_> = formats.collect();
+            // planar s16 avoids a needless s16 -> s32 conversion when LAME supports it
             formats
                 .iter()
                 .find(|f| **f == decoder_format)
+                .or_else(|| formats.iter().find(|f| **f == decoder_format.planar()))
                 .or(formats.first())
                 .copied()
                 .ok_or_else(|| anyhow::anyhow!("encoder reports no sample formats"))
@@ -250,7 +260,7 @@ pub fn transcode(input: &str, metadata: &[String], output: &str) -> anyhow::Resu
     let mut ictx = ffmpeg::format::input(input)?;
     let mut octx = ffmpeg::format::output(output)?;
     let mut transcoder = transcoder(&mut ictx, &mut octx, output)?;
-    
+
     let combined_metadata = prepare_metadata(ictx.metadata().iter(), metadata)?;
     octx.metadata_mut().replace_with(combined_metadata);
     octx.write_header()?;
