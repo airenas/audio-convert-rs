@@ -41,7 +41,7 @@ fn filter(
     filter.output("in", 0)?.input("out", 0)?.parse("anull")?;
     filter.validate()?;
 
-    tracing::trace!("{}", filter.dump());
+    // tracing::trace!("{}", filter.dump());
 
     if let Some(codec) = encoder.codec() {
         if !codec
