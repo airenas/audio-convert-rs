@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use audio_convert_rs::{
     ffmpeg, otel,
     proto_audio_convert::{self, audio_converter_server::AudioConverterServer},
@@ -5,6 +7,7 @@ use audio_convert_rs::{
     ulaw, SERVICE_NAME,
 };
 use clap::Parser;
+use sysinfo::Disks;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio_util::sync::CancellationToken;
 use tonic::transport::Server;
@@ -17,6 +20,9 @@ struct Args {
     /// GRPC server port
     #[arg(long, env, default_value = "50051")]
     port: u16,
+    /// Temporary directory for storing intermediate files
+    #[arg(long, env, default_value = "/dev/shm")]
+    tmp_storage: String,
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -56,6 +62,12 @@ async fn main_int(args: Args) -> anyhow::Result<()> {
     tracing::info!(ffmpeg_version = env!("CARGO_FFMPEG_VERSION"));
     tracing::info!(lame_version = env!("CARGO_LAME_VERSION"));
     tracing::info!(port = args.port);
+    let available_space =
+        humansize::format_size(get_space_for_path(&args.tmp_storage)?, humansize::DECIMAL);
+    tracing::info!(
+        tmp_storage = args.tmp_storage,
+        available_space = available_space
+    );
 
     let cancel_token = CancellationToken::new();
 
@@ -79,7 +91,7 @@ async fn main_int(args: Args) -> anyhow::Result<()> {
 
     let ffmpeg_wrapper = ffmpeg::wrapper::FFMpegWrapper::new()?;
     let ulaw_transcoder = ulaw::transcoder::ULaw::new()?;
-    let service = Service::new(ffmpeg_wrapper, ulaw_transcoder);
+    let service = Service::new(ffmpeg_wrapper, ulaw_transcoder, args.tmp_storage);
     let grpc_service = AudioConverterServer::new(service);
     let reflection_service = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(proto_audio_convert::FILE_DESCRIPTOR_SET)
@@ -102,4 +114,21 @@ async fn main_int(args: Args) -> anyhow::Result<()> {
 
     tracing::info!("Service stopped");
     Ok(())
+}
+
+fn get_space_for_path(path_str: &str) -> anyhow::Result<u64> {
+    let disks = Disks::new_with_refreshed_list();
+    let target_path = Path::new(path_str);
+
+    if let Some(disk) = disks
+        .iter()
+        .find(|d| target_path.starts_with(d.mount_point()))
+    {
+        Ok(disk.available_space())
+    } else {
+        Err(anyhow::anyhow!(
+            "Could not find disk for path: {}",
+            path_str
+        ))
+    }
 }

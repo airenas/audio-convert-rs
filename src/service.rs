@@ -28,14 +28,20 @@ use tracing::{instrument, Instrument};
 pub struct Service {
     transcoder: FFMpegWrapper,
     ulaw_transcoder: ulaw::transcoder::ULaw,
+    tmp_storage: String,
 }
 
 impl Service {
-    pub fn new(transcoder: FFMpegWrapper, ulaw_transcoder: ulaw::transcoder::ULaw) -> Self {
+    pub fn new(
+        transcoder: FFMpegWrapper,
+        ulaw_transcoder: ulaw::transcoder::ULaw,
+        tmp_storage: String,
+    ) -> Self {
         tracing::info!("new ulaw service");
         Self {
             transcoder,
             ulaw_transcoder,
+            tmp_storage,
         }
     }
 
@@ -48,7 +54,7 @@ impl Service {
         })?;
         validate_format(audio_format)?;
 
-        let dir = TempDir::new_in(Path::new("/dev/shm"))
+        let dir = TempDir::new_in(Path::new(&self.tmp_storage))
             .await
             .with_context(|| "tmp dir create")?;
         let dir_str = dir.to_str().context("no tmp dir path")?;
@@ -155,6 +161,7 @@ impl AudioConverter for Service {
                 .into());
             };
 
+        let tmp_dir = self.tmp_storage.clone();
         let (tx, rx) = tokio::sync::mpsc::channel(10);
 
         if audio_format == AudioFormat::Ulaw {
@@ -164,7 +171,7 @@ impl AudioConverter for Service {
             tokio::spawn(
                 async move {
                     if let Err(e) = async {
-                        let dir = TempDir::new_in(Path::new("/dev/shm"))
+                        let dir = TempDir::new_in(Path::new(&tmp_dir))
                             .await
                             .with_context(|| "tmp dir create")?;
                         let dir_str = dir.to_str().context("no tmp dir path")?;
@@ -224,7 +231,7 @@ impl AudioConverter for Service {
             tokio::spawn(
                 async move {
                     if let Err(e) = async {
-                        let dir = TempDir::new_in(Path::new("/dev/shm"))
+                        let dir = TempDir::new_in(Path::new(&tmp_dir))
                             .await
                             .with_context(|| "tmp dir create")?;
                         let dir_str = dir.to_str().context("no tmp dir path")?;
